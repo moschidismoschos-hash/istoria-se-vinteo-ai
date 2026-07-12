@@ -1,0 +1,651 @@
+:root {
+  color-scheme: dark;
+  --background: #03070c;
+  --surface: #0a1420;
+  --surface-2: #0d1926;
+  --border: #203449;
+  --text: #f4f7fb;
+  --muted: #aab8c8;
+  --blue: #208cff;
+  --blue-2: #075be8;
+  --blue-soft: #65b5ff;
+  --green: #6ae783;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(31, 117, 210, .16), transparent 35%),
+    linear-gradient(180deg, #06101a 0%, #020508 100%);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-shell {
+  width: min(100%, 680px);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: max(18px, env(safe-area-inset-top)) 18px max(22px, env(safe-area-inset-bottom));
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  min-height: 54px;
+  margin-bottom: 10px;
+}
+
+.topbar h1 {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(1.2rem, 5.2vw, 1.8rem);
+  font-weight: 800;
+  letter-spacing: -.025em;
+}
+
+.brand-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(60, 166, 255, .35);
+  border-radius: 12px;
+  background: rgba(10, 65, 116, .35);
+  box-shadow: 0 0 22px rgba(31, 140, 255, .44), inset 0 0 16px rgba(49, 156, 255, .12);
+}
+
+.brand-icon svg {
+  width: 25px;
+  fill: #65baff;
+}
+
+.brand-icon .spark {
+  fill: #fff;
+}
+
+.menu-button {
+  justify-self: end;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  color: #9badc1;
+  font-size: 1.7rem;
+  cursor: pointer;
+}
+
+.panel,
+.setting-row {
+  border: 1px solid var(--border);
+  background: linear-gradient(145deg, rgba(15, 28, 42, .96), rgba(6, 14, 23, .96));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .025);
+}
+
+.story-card {
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.story-card > label {
+  display: block;
+  margin-bottom: 11px;
+  color: var(--blue-soft);
+  font-size: 1.05rem;
+  font-weight: 750;
+}
+
+.textarea-wrap {
+  position: relative;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 232px;
+  resize: vertical;
+  padding: 16px 16px 35px;
+  border: 1px solid #29425b;
+  border-radius: 14px;
+  outline: none;
+  background: rgba(2, 9, 16, .58);
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.55;
+  transition: border-color .2s, box-shadow .2s;
+}
+
+textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(32, 140, 255, .14);
+}
+
+.counter {
+  position: absolute;
+  right: 13px;
+  bottom: 11px;
+  color: #c5cfdb;
+  font-size: .82rem;
+}
+
+.settings {
+  display: grid;
+  gap: 11px;
+  margin-top: 12px;
+}
+
+.setting-row {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 15px;
+  border-radius: 14px;
+}
+
+.setting-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  color: #e9eef5;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.setting-left svg {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  fill: #9baec3;
+}
+
+select {
+  max-width: 49%;
+  cursor: pointer;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--blue-soft);
+  font-weight: 750;
+  text-align: right;
+}
+
+select option {
+  background: #0c1824;
+  color: #fff;
+}
+
+.create-button {
+  display: flex;
+  width: 100%;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  margin-top: 18px;
+  cursor: pointer;
+  border: 1px solid #4bb3ff;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #25a6ff 0%, #126ff1 44%, #0648ce 100%);
+  box-shadow: 0 12px 28px rgba(0, 95, 255, .28), inset 0 1px 0 rgba(255, 255, 255, .28);
+  color: #fff;
+  font-size: 1.3rem;
+  font-weight: 850;
+  transition: transform .16s, filter .16s, opacity .16s;
+}
+
+.create-button:active {
+  transform: scale(.985);
+}
+
+.create-button:disabled {
+  cursor: wait;
+  filter: saturate(.7);
+  opacity: .72;
+}
+
+.preview-section {
+  margin-top: 22px;
+}
+
+.preview-section h2 {
+  margin: 0 0 12px 4px;
+  font-size: 1.07rem;
+  font-weight: 740;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.preview-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.1 / 1;
+  object-fit: cover;
+  border: 1px solid #3c668e;
+  border-radius: 14px;
+  background: #07101a;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, .26);
+}
+
+.progress-panel {
+  position: relative;
+  margin-top: 16px;
+  padding: 17px 12px 13px;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.progress-line {
+  position: absolute;
+  top: 44px;
+  left: 12.5%;
+  width: 75%;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, #26394d 0 8px, transparent 8px 13px);
+}
+
+.progress-line span {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #36c1ff, #1778ff);
+  box-shadow: 0 0 12px rgba(33, 139, 255, .8);
+  transition: width .55s ease;
+}
+
+.progress-steps {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: start;
+  text-align: center;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #a7b1be;
+  font-size: clamp(.7rem, 3vw, .84rem);
+  line-height: 1.2;
+}
+
+.step-icon {
+  display: grid;
+  width: 49px;
+  height: 49px;
+  place-items: center;
+  border: 2px solid #405166;
+  border-radius: 50%;
+  background: #0b1521;
+  box-shadow: 0 0 0 6px #0a1420;
+}
+
+.step-icon svg {
+  width: 25px;
+  fill: #8190a2;
+}
+
+.progress-step.active {
+  color: #fff;
+}
+
+.progress-step.active .step-icon {
+  border-color: #3fafff;
+  background: #0c54ba;
+  box-shadow: 0 0 18px rgba(38, 153, 255, .85), 0 0 0 6px #0a1420;
+}
+
+.progress-step.active .step-icon svg {
+  fill: #fff;
+}
+
+.progress-step.done .step-icon {
+  border-color: #55cfff;
+  background: #123d71;
+}
+
+.progress-step.done .step-icon svg {
+  fill: #d9f3ff;
+}
+
+.status-message {
+  min-height: 19px;
+  margin: 13px 0 0;
+  color: #7ec4ff;
+  font-size: .82rem;
+  text-align: center;
+}
+
+.footer-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.tool-button {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  border: 1px solid #294760;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #0b1926, #07101a);
+  font-size: 1rem;
+  font-weight: 760;
+}
+
+.termux-button {
+  color: var(--green);
+}
+
+.github-button {
+  color: #67aaff;
+}
+
+.github-button svg {
+  width: 25px;
+  fill: currentColor;
+}
+
+.toast {
+  position: fixed;
+  z-index: 100;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  left: 18px;
+  max-width: 520px;
+  margin: auto;
+  padding: 13px 16px;
+  pointer-events: none;
+  transform: translateY(30px);
+  border: 1px solid #2b6fab;
+  border-radius: 13px;
+  background: rgba(7, 20, 32, .97);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .45);
+  color: #ecf7ff;
+  text-align: center;
+  opacity: 0;
+  transition: opacity .22s, transform .22s;
+}
+
+.toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+@media (max-width: 420px) {
+  .app-shell {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .story-card {
+    padding: 13px;
+  }
+
+  textarea {
+    min-height: 210px;
+    font-size: .94rem;
+  }
+
+  .setting-row {
+    min-height: 60px;
+    padding: 0 12px;
+  }
+
+  .setting-left {
+    gap: 9px;
+    font-size: .92rem;
+  }
+
+  .setting-left svg {
+    width: 23px;
+  }
+
+  select {
+    font-size: .89rem;
+  }
+
+  .create-button {
+    min-height: 66px;
+    font-size: 1.12rem;
+  }
+
+  .preview-grid {
+    gap: 7px;
+  }
+
+  .step-icon {
+    width: 43px;
+    height: 43px;
+  }
+
+  .step-icon svg {
+    width: 22px;
+  }
+
+  .progress-line {
+    top: 41px;
+  }
+}
+
+/* Συμπαγής προβολή κινητού: κρατά ολόκληρη την εφαρμογή στην οθόνη. */
+@media (max-width: 720px) and (max-height: 950px) {
+  body {
+    min-height: 100dvh;
+  }
+
+  .app-shell {
+    width: 100%;
+    min-height: 100dvh;
+    padding: 6px 10px 8px;
+  }
+
+  .topbar {
+    grid-template-columns: 34px 1fr 34px;
+    min-height: 38px;
+    margin-bottom: 4px;
+  }
+
+  .topbar h1 {
+    font-size: 1.12rem;
+  }
+
+  .brand-icon {
+    width: 31px;
+    height: 31px;
+    border-radius: 10px;
+  }
+
+  .brand-icon svg {
+    width: 20px;
+  }
+
+  .menu-button {
+    width: 34px;
+    height: 34px;
+    font-size: 1.35rem;
+  }
+
+  .story-card {
+    padding: 8px;
+    border-radius: 13px;
+  }
+
+  .story-card > label {
+    margin-bottom: 5px;
+    font-size: .84rem;
+  }
+
+  textarea {
+    height: 108px;
+    min-height: 108px;
+    max-height: 108px;
+    resize: none;
+    padding: 8px 9px 25px;
+    border-radius: 11px;
+    font-size: .76rem;
+    line-height: 1.38;
+  }
+
+  .counter {
+    right: 8px;
+    bottom: 6px;
+    padding: 1px 4px;
+    border-radius: 5px;
+    background: rgba(3, 12, 21, .96);
+    font-size: .65rem;
+    line-height: 1.3;
+  }
+
+  .settings {
+    gap: 5px;
+    margin-top: 6px;
+  }
+
+  .setting-row {
+    min-height: 43px;
+    padding: 0 10px;
+    border-radius: 12px;
+  }
+
+  .setting-left {
+    gap: 8px;
+    font-size: .78rem;
+  }
+
+  .setting-left svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  select {
+    max-width: 48%;
+    font-size: .77rem;
+  }
+
+  .create-button {
+    min-height: 50px;
+    margin-top: 7px;
+    border-radius: 13px;
+    font-size: 1rem;
+  }
+
+  .preview-section {
+    margin-top: 7px;
+  }
+
+  .preview-section h2 {
+    margin: 0 0 5px 2px;
+    font-size: .84rem;
+  }
+
+  .preview-grid {
+    gap: 6px;
+  }
+
+  .preview-grid img {
+    height: 78px;
+    aspect-ratio: auto;
+    border-radius: 10px;
+  }
+
+  .progress-panel {
+    margin-top: 7px;
+    padding: 7px 6px 6px;
+    border-radius: 13px;
+  }
+
+  .progress-line {
+    top: 25px;
+    height: 2px;
+  }
+
+  .progress-step {
+    gap: 3px;
+    font-size: .58rem;
+    line-height: 1.12;
+  }
+
+  .step-icon {
+    width: 34px;
+    height: 34px;
+    border-width: 1.5px;
+    box-shadow: 0 0 0 3px #0a1420;
+  }
+
+  .step-icon svg {
+    width: 18px;
+  }
+
+  .progress-step.active .step-icon {
+    box-shadow: 0 0 14px rgba(38, 153, 255, .78), 0 0 0 3px #0a1420;
+  }
+
+  .status-message {
+    min-height: 13px;
+    margin: 4px 0 0;
+    font-size: .63rem;
+  }
+
+  .footer-links {
+    gap: 8px;
+    margin-top: 7px;
+  }
+
+  .tool-button {
+    min-height: 41px;
+    gap: 7px;
+    border-radius: 11px;
+    font-size: .8rem;
+  }
+
+  .github-button svg {
+    width: 20px;
+  }
+
+  .toast {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    padding: 9px 11px;
+    font-size: .78rem;
+  }
+}

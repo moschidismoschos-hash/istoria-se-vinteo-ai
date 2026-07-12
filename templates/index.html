@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111d">
+  <title>Ιστορία σε Βίντεο ΑΙ</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2216%22 fill=%22%230b5fd7%22/%3E%3Cpath d=%22M17 20h23a6 6 0 0 1 6 6v2l7-4v16l-7-4v2a6 6 0 0 1-6 6H17a6 6 0 0 1-6-6V26a6 6 0 0 1 6-6Z%22 fill=%22white%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" role="img">
+          <path d="M4 6.8A2.8 2.8 0 0 1 6.8 4h7.4A2.8 2.8 0 0 1 17 6.8v1.4l2.7-1.5a1 1 0 0 1 1.5.9v8.8a1 1 0 0 1-1.5.9L17 15.8v1.4a2.8 2.8 0 0 1-2.8 2.8H6.8A2.8 2.8 0 0 1 4 17.2V6.8Z"/>
+          <path class="spark" d="m9.8 8.2.7 1.5 1.5.7-1.5.7-.7 1.5-.7-1.5-1.5-.7 1.5-.7.7-1.5Z"/>
+        </svg>
+      </div>
+      <h1>Ιστορία σε Βίντεο ΑΙ</h1>
+      <button class="menu-button" type="button" aria-label="Μενού">⋮</button>
+    </header>
+
+    <section class="story-card panel">
+      <label for="story">Γράψε την ιστορία σου</label>
+      <div class="textarea-wrap">
+        <textarea id="story" maxlength="2000" spellcheck="true">Ένα νεαρό κορίτσι βρίσκει ένα παλιό γράμμα σε μια σοφίτα. Το γράμμα μιλά για έναν κρυμμένο θησαυρό σε ένα ξεχασμένο νησί. Αποφασίζει να ξεκινήσει ένα ταξίδι, με τη βοήθεια ενός φίλου της, αντιμετωπίζοντας καταιγίδες, γρίφους και μυστικά του παρελθόντος, μέχρι να ανακαλύψει την αλήθεια που θα αλλάξει τη ζωή της για πάντα.</textarea>
+        <span id="counter" class="counter">0/2000</span>
+      </div>
+    </section>
+
+    <section class="settings" aria-label="Ρυθμίσεις βίντεο">
+      <label class="setting-row">
+        <span class="setting-left">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1.4a1.8 1.8 0 0 0 0-3.6h-1a1.4 1.4 0 0 1 0-2.8H15A6 6 0 0 0 15 3h-3Zm-4 7.2a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm3-3a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm4 1.1a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm2 3.3a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z"/></svg>
+          <span>Στυλ</span>
+        </span>
+        <select id="style" aria-label="Στυλ">
+          <option>Ρεαλιστικό</option>
+          <option>Κινηματογραφικό</option>
+          <option>Παραμύθι</option>
+          <option>Τρόμου</option>
+        </select>
+      </label>
+
+      <label class="setting-row">
+        <span class="setting-left">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm1 10.4 4 2.3-1 1.7-5-2.9V7h2v5.4Z"/></svg>
+          <span>Διάρκεια</span>
+        </span>
+        <select id="duration" aria-label="Διάρκεια">
+          <option>1 λεπτό</option>
+          <option>30 δευτερόλεπτα</option>
+          <option>2 λεπτά</option>
+          <option>5 λεπτά</option>
+        </select>
+      </label>
+
+      <label class="setting-row">
+        <span class="setting-left">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4Zm7-4a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H8a1 1 0 0 0 0 2h8a1 1 0 0 0 0-2h-3v-3.08A7 7 0 0 0 19 10Z"/></svg>
+          <span>Φωνή αφήγησης</span>
+        </span>
+        <select id="voice" aria-label="Φωνή αφήγησης">
+          <option>Ελληνικά</option>
+          <option>Χωρίς αφήγηση</option>
+          <option>Ανδρική φωνή</option>
+          <option>Γυναικεία φωνή</option>
+        </select>
+      </label>
+
+      <label class="setting-row">
+        <span class="setting-left">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H7Zm4 13h2v1h-2v-1Z"/></svg>
+          <span>Μορφή βίντεο</span>
+        </span>
+        <select id="format" aria-label="Μορφή βίντεο">
+          <option>Κάθετο</option>
+          <option>Οριζόντιο</option>
+          <option>Τετράγωνο</option>
+        </select>
+      </label>
+    </section>
+
+    <button id="createButton" class="create-button" type="button">
+      <span aria-hidden="true">✦</span>
+      <span>Δημιουργία βίντεο</span>
+    </button>
+
+    <section class="preview-section">
+      <h2><span aria-hidden="true">🎬</span> Προεπισκόπηση σκηνών</h2>
+      <div class="preview-grid">
+        <img src="{{ url_for('static', filename='images/scene-1.png') }}" alt="Κορίτσι που διαβάζει ένα παλιό γράμμα">
+        <img src="{{ url_for('static', filename='images/scene-2.png') }}" alt="Δύο ταξιδιώτες μπροστά σε ένα άγριο νησί">
+        <img src="{{ url_for('static', filename='images/scene-3.png') }}" alt="Κρυμμένο σεντούκι μέσα σε αρχαία σπηλιά">
+      </div>
+    </section>
+
+    <section class="progress-panel panel" aria-label="Πρόοδος δημιουργίας">
+      <div id="progressLine" class="progress-line"><span></span></div>
+      <div class="progress-steps">
+        <div class="progress-step active" data-step="0">
+          <div class="step-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h16V6H4Zm2 10 4-4 3 3 2-2 3 3H6Zm10-7a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/></svg>
+          </div>
+          <span>Δημιουργία<br>εικόνων</span>
+        </div>
+        <div class="progress-step" data-step="1">
+          <div class="step-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v16H3V4Zm2 2v3h3V6H5Zm5 0v12h4V6h-4Zm6 0v3h3V6h-3ZM5 11v3h3v-3H5Zm11 0v3h3v-3h-3ZM5 16v2h3v-2H5Zm11 0v2h3v-2h-3Z"/></svg>
+          </div>
+          <span>Μετατροπή<br>σε βίντεο</span>
+        </div>
+        <div class="progress-step" data-step="2">
+          <div class="step-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10h2v4H3v-4Zm4-4h2v12H7V6Zm4-3h2v18h-2V3Zm4 4h2v10h-2V7Zm4 3h2v4h-2v-4Z"/></svg>
+          </div>
+          <span>Αφήγηση</span>
+        </div>
+        <div class="progress-step" data-step="3">
+          <div class="step-icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm-1.2 14.4-4-4 1.4-1.4 2.6 2.6 5-5 1.4 1.4-6.4 6.4Z"/></svg>
+          </div>
+          <span>Τελική<br>εξαγωγή</span>
+        </div>
+      </div>
+      <p id="statusMessage" class="status-message">Έτοιμο για δημιουργία</p>
+    </section>
+
+    <footer class="footer-links">
+      <button type="button" class="tool-button termux-button">
+        <span aria-hidden="true">❯_</span>
+        <span>Τέρμουξ</span>
+      </button>
+      <button type="button" class="tool-button github-button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .8a11.2 11.2 0 0 0-3.5 21.8c.6.1.8-.3.8-.6v-2.2c-3.4.7-4.1-1.4-4.1-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0C17.7 4.2 18.7 4.5 18.7 4.5c.6 1.6.2 2.9.1 3.2.8.9 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3c0 .3.2.7.8.6A11.2 11.2 0 0 0 12 .8Z"/></svg>
+        <span>ΓκίτΧαμπ</span>
+      </button>
+    </footer>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

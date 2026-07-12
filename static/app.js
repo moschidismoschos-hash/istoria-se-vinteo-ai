@@ -39,7 +39,7 @@ function installScenePanel() {
   panel.innerHTML = `
     <div class="scene-details-head">
       <h2>Περιγραφές σκηνών</h2>
-      <a id="downloadVideo" class="download-video" href="#" download hidden>Λήψη δοκιμαστικού βίντεο</a>
+      <a id="downloadVideo" class="download-video" href="#" download hidden>Λήψη βίντεο</a>
     </div>
     <div id="sceneList" class="scene-list"></div>
   `;
@@ -56,7 +56,7 @@ function showToast(message) {
   clearTimeout(toastTimer);
   toast.textContent = message;
   toast.classList.add("show");
-  toastTimer = setTimeout(() => toast.classList.remove("show"), 4200);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 5000);
 }
 
 function resetProgress() {
@@ -67,14 +67,27 @@ function resetProgress() {
   });
 }
 
-function showPreviewVideoProgress() {
-  progressSteps.forEach((step) => {
+function setProgress(completedSteps, activeStep = null) {
+  progressSteps.forEach((step, index) => {
     step.classList.remove("active", "done");
+
+    if (index < completedSteps) {
+      step.classList.add("done");
+    } else if (activeStep === index) {
+      step.classList.add("active");
+    }
   });
-  progressSteps[0].classList.add("done");
-  progressSteps[1].classList.add("done");
-  progressSteps[2].classList.add("active");
-  progressLine.style.width = "66%";
+
+  const percentage = Math.min(100, Math.max(0, completedSteps * 33.33));
+  progressLine.style.width = `${percentage}%`;
+}
+
+function finishProgress() {
+  progressSteps.forEach((step) => {
+    step.classList.remove("active");
+    step.classList.add("done");
+  });
+  progressLine.style.width = "100%";
 }
 
 function renderScenes(scenes) {
@@ -112,6 +125,7 @@ async function startCreation() {
   const text = story.value.trim();
   const scenePanel = document.getElementById("sceneDetails");
   const downloadVideo = document.getElementById("downloadVideo");
+  const selectedVoice = document.getElementById("voice").value;
 
   if (!text) {
     story.focus();
@@ -122,9 +136,9 @@ async function startCreation() {
   scenePanel.hidden = true;
   downloadVideo.hidden = true;
   createButton.disabled = true;
-  createButton.innerHTML = "<span>✦</span><span>Δημιουργία δοκιμαστικού βίντεο…</span>";
+  createButton.innerHTML = "<span>✦</span><span>Δημιουργία βίντεο και αφήγησης…</span>";
   resetProgress();
-  statusMessage.textContent = "Η ιστορία χωρίζεται σε σκηνές και δημιουργείται το πρώτο αρχείο βίντεο…";
+  statusMessage.textContent = "Δημιουργούνται οι σκηνές, το βίντεο και η ελληνική αφήγηση…";
 
   try {
     const response = await fetch("/api/dimiourgia", {
@@ -134,7 +148,7 @@ async function startCreation() {
         story: text,
         style: document.getElementById("style").value,
         duration: document.getElementById("duration").value,
-        voice: document.getElementById("voice").value,
+        voice: selectedVoice,
         format: document.getElementById("format").value,
       }),
     });
@@ -146,15 +160,30 @@ async function startCreation() {
     }
 
     renderScenes(data.scenes);
-    showPreviewVideoProgress();
 
     if (data.video_url) {
       downloadVideo.href = data.video_url;
       downloadVideo.hidden = false;
-      statusMessage.textContent = `${data.message} Το πρώτο δοκιμαστικό βίντεο είναι έτοιμο χωρίς αφήγηση.`;
-      showToast("Το δοκιμαστικό βίντεο δημιουργήθηκε.");
+
+      if (data.narration_added) {
+        downloadVideo.textContent = "Λήψη βίντεο με ελληνική αφήγηση";
+        finishProgress();
+        statusMessage.textContent = `${data.message} Το βίντεο είναι έτοιμο με ${data.voice_used.toLowerCase()}.`;
+        showToast("Το βίντεο με ελληνική αφήγηση δημιουργήθηκε.");
+      } else if (selectedVoice === "Χωρίς αφήγηση") {
+        downloadVideo.textContent = "Λήψη βίντεο χωρίς αφήγηση";
+        finishProgress();
+        statusMessage.textContent = `${data.message} Το βίντεο είναι έτοιμο χωρίς αφήγηση.`;
+        showToast("Το βίντεο χωρίς αφήγηση δημιουργήθηκε.");
+      } else {
+        downloadVideo.textContent = "Λήψη βίντεο χωρίς αφήγηση";
+        setProgress(2, 2);
+        statusMessage.textContent = `${data.message} Το βίντεο δημιουργήθηκε, αλλά η αφήγηση απέτυχε.`;
+        showToast(data.narration_error || "Δεν δημιουργήθηκε η ελληνική αφήγηση.");
+      }
     } else {
-      statusMessage.textContent = `${data.message} Οι περιγραφές είναι έτοιμες, αλλά το δοκιμαστικό βίντεο δεν δημιουργήθηκε.`;
+      setProgress(1, 1);
+      statusMessage.textContent = `${data.message} Οι περιγραφές είναι έτοιμες, αλλά το βίντεο δεν δημιουργήθηκε.`;
       showToast(data.video_error || "Δεν δημιουργήθηκε το δοκιμαστικό βίντεο.");
     }
 

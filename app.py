@@ -142,28 +142,41 @@ def video_dimensions(video_format: str) -> tuple[int, int]:
     }.get(video_format, (480, 854))
 
 
-def run_ffmpeg(command: list[str]) -> None:
+def run_process(
+    command: list[str],
+    *,
+    title: str,
+    timeout: int = 900,
+) -> None:
+    """Εκτελεί εξωτερικό εργαλείο και εμφανίζει καθαρό σφάλμα στο Τέρμουξ."""
     result = subprocess.run(
         command,
         cwd=BASE_DIR,
         capture_output=True,
         text=True,
-        timeout=900,
+        timeout=timeout,
         check=False,
     )
-    if result.returncode != 0:
-        error_text = result.stderr.strip()
-        print("\n--- ΣΦΑΛΜΑ ΦΦΜΕΓΚ ---", flush=True)
-        print(error_text or "Δεν δόθηκαν λεπτομέρειες σφάλματος.", flush=True)
-        print("--- ΤΕΛΟΣ ΣΦΑΛΜΑΤΟΣ ---\n", flush=True)
 
-        details = error_text.splitlines()
-        last_line = details[-1] if details else "Άγνωστο σφάλμα του φφμεγκ."
-        raise RuntimeError(last_line)
+    if result.returncode == 0:
+        return
+
+    error_text = (result.stderr or result.stdout).strip()
+    print(f"\n--- ΣΦΑΛΜΑ {title.upper()} ---", flush=True)
+    print(error_text or "Δεν δόθηκαν λεπτομέρειες σφάλματος.", flush=True)
+    print(f"--- ΤΕΛΟΣ ΣΦΑΛΜΑΤΟΣ {title.upper()} ---\n", flush=True)
+
+    details = error_text.splitlines()
+    last_line = details[-1] if details else f"Άγνωστο σφάλμα: {title}."
+    raise RuntimeError(last_line)
+
+
+def run_ffmpeg(command: list[str]) -> None:
+    run_process(command, title="φφμεγκ")
 
 
 def create_preview_video(scenes: list[Scene], video_format: str) -> str:
-    """Δημιουργεί πραγματικό δοκιμαστικό MP4 από τις τρεις υπάρχουσες εικόνες."""
+    """Δημιουργεί πραγματικό δοκιμαστικό ΜΡ4 από τις τρεις υπάρχουσες εικόνες."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
@@ -189,7 +202,6 @@ def create_preview_video(scenes: list[Scene], video_format: str) -> str:
             file.write(f"file '{image_path.as_posix()}'\n")
             file.write(f"duration {scene.duration_seconds}\n")
 
-        # Το τελευταίο αρχείο επαναλαμβάνεται ώστε να κρατηθεί σωστά η διάρκειά του.
         file.write(f"file '{selected_images[-1].as_posix()}'\n")
 
     width, height = video_dimensions(video_format)
@@ -229,7 +241,6 @@ def create_preview_video(scenes: list[Scene], video_format: str) -> str:
             ]
         )
     except RuntimeError:
-        # Εφεδρικός κωδικοποιητής για εκδόσεις του φφμεγκ χωρίς libx264.
         run_ffmpeg(
             common
             + [
@@ -243,6 +254,95 @@ def create_preview_video(scenes: list[Scene], video_format: str) -> str:
 
     if not output_path.exists() or output_path.stat().st_size == 0:
         raise RuntimeError("Το αρχείο βίντεο δεν δημιουργήθηκε σωστά.")
+
+    return output_path.name
+
+
+def resolve_greek_voice(voice_label: str) -> tuple[str | None, str]:
+    """Μετατρέπει την επιλογή της εφαρμογής σε διαθέσιμη ελληνική φωνή."""
+    if voice_label == "Χωρίς αφήγηση":
+        return None, "Χωρίς αφήγηση"
+
+    if voice_label == "Ανδρική φωνή":
+        return "el-GR-NestorasNeural", "Ανδρική ελληνική φωνή"
+
+    return "el-GR-AthinaNeural", "Γυναικεία ελληνική φωνή"
+
+
+def create_greek_narration(story: str, voice_label: str) -> tuple[str | None, str]:
+    """Δημιουργεί ελληνική αφήγηση ΜΡ3 με το εγκατεστημένο edge-tts."""
+    voice_name, friendly_name = resolve_greek_voice(voice_label)
+    if voice_name is None:
+        return None, friendly_name
+
+    edge_tts = shutil.which("edge-tts")
+    if not edge_tts:
+        raise RuntimeError(
+            "Το edge-tts δεν βρέθηκε. Γράψε: pip install edge-tts"
+        )
+
+    audio_path = OUTPUT_DIR / "elliniki-afhghsh.mp3"
+    if audio_path.exists():
+        audio_path.unlink()
+
+    command = [
+        edge_tts,
+        "--voice",
+        voice_name,
+        "--text",
+        story,
+        "--write-media",
+        str(audio_path),
+    ]
+    run_process(command, title="ελληνικής αφήγησης", timeout=600)
+
+    if not audio_path.exists() or audio_path.stat().st_size == 0:
+        raise RuntimeError("Η ελληνική αφήγηση δεν δημιουργήθηκε σωστά.")
+
+    return audio_path.name, friendly_name
+
+
+def combine_video_and_narration(
+    video_filename: str,
+    narration_filename: str,
+) -> str:
+    """Ενώνει το δοκιμαστικό βίντεο με την ελληνική αφήγηση."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
+
+    video_path = OUTPUT_DIR / video_filename
+    narration_path = OUTPUT_DIR / narration_filename
+    output_path = OUTPUT_DIR / "vinteo-me-elliniki-afhghsh.mp4"
+
+    command = [
+        ffmpeg,
+        "-y",
+        "-i",
+        str(video_path),
+        "-i",
+        str(narration_path),
+        "-filter_complex",
+        "[1:a]apad[audio]",
+        "-map",
+        "0:v:0",
+        "-map",
+        "[audio]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+    run_ffmpeg(command)
+
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise RuntimeError("Το βίντεο με αφήγηση δεν δημιουργήθηκε σωστά.")
 
     return output_path.name
 
@@ -266,7 +366,9 @@ def dimiourgia():
         return jsonify({"ok": False, "message": "Γράψε πρώτα την ιστορία σου."}), 400
 
     if len(story) > 2000:
-        return jsonify({"ok": False, "message": "Η ιστορία ξεπερνά τους 2.000 χαρακτήρες."}), 400
+        return jsonify(
+            {"ok": False, "message": "Η ιστορία ξεπερνά τους 2.000 χαρακτήρες."}
+        ), 400
 
     options = {
         "style": str(data.get("style", "Ρεαλιστικό")),
@@ -283,15 +385,38 @@ def dimiourgia():
     )
 
     if not scenes:
-        return jsonify({"ok": False, "message": "Δεν μπόρεσαν να δημιουργηθούν σκηνές."}), 400
+        return jsonify(
+            {"ok": False, "message": "Δεν μπόρεσαν να δημιουργηθούν σκηνές."}
+        ), 400
 
     video_url = None
     video_error = None
+    narration_added = False
+    narration_error = None
+    voice_used = "Χωρίς αφήγηση"
 
     try:
-        video_filename = create_preview_video(scenes, options["format"])
-        video_url = url_for("download_video", filename=video_filename)
+        silent_video_filename = create_preview_video(scenes, options["format"])
+        final_video_filename = silent_video_filename
+
+        if options["voice"] != "Χωρίς αφήγηση":
+            try:
+                narration_filename, voice_used = create_greek_narration(
+                    story,
+                    options["voice"],
+                )
+                if narration_filename:
+                    final_video_filename = combine_video_and_narration(
+                        silent_video_filename,
+                        narration_filename,
+                    )
+                    narration_added = True
+            except (RuntimeError, subprocess.TimeoutExpired) as error:
+                narration_error = str(error)
+
+        video_url = url_for("download_video", filename=final_video_filename)
         video_url = f"{video_url}?t={int(time.time())}"
+
     except (RuntimeError, subprocess.TimeoutExpired) as error:
         video_error = str(error)
 
@@ -305,6 +430,9 @@ def dimiourgia():
             "scenes": [asdict(scene) for scene in scenes],
             "video_url": video_url,
             "video_error": video_error,
+            "narration_added": narration_added,
+            "narration_error": narration_error,
+            "voice_used": voice_used,
             "preview_images": [
                 "/static/images/scene-1.png",
                 "/static/images/scene-2.png",

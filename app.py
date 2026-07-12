@@ -8,12 +8,22 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_from_directory, url_for
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "output"
+UPLOAD_DIR = OUTPUT_DIR / "uploaded-photos"
+NORMALIZED_DIR = OUTPUT_DIR / "normalized-photos"
+
 OUTPUT_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR.mkdir(exist_ok=True)
+NORMALIZED_DIR.mkdir(exist_ok=True)
+
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MAX_PHOTOS = 20
 
 
 @dataclass
@@ -52,7 +62,7 @@ def calculate_scene_count(story: str, requested_scenes: int) -> int:
 
 
 def split_story_balanced(story: str, scene_count: int) -> list[str]:
-    """Χωρίζει όλη την ιστορία σε ισορροπημένα τμήματα ίσου περίπου μήκους."""
+    """Χωρίζει όλη την ιστορία σε ισορροπημένα τμήματα."""
     words = story.split()
     if not words or scene_count <= 0:
         return []
@@ -75,7 +85,7 @@ def split_story_balanced(story: str, scene_count: int) -> list[str]:
 
 
 def build_visual_prompt(scene_text: str, style: str, video_format: str) -> str:
-    """Δημιουργεί την περιγραφή που αργότερα θα σταλεί στη μηχανή εικόνας."""
+    """Δημιουργεί την περιγραφή της σκηνής για μελλοντική χρήση."""
     format_hint = {
         "Κάθετο": "κάθετο κάδρο 9:16",
         "Οριζόντιο": "οριζόντιο κάδρο 16:9",
@@ -134,12 +144,22 @@ def create_storyboard(
 
 
 def video_dimensions(video_format: str) -> tuple[int, int]:
-    """Επιστρέφει μικρή ανάλυση προεπισκόπησης για γρήγορη δημιουργία στο κινητό."""
+    """Επιστρέφει ανάλυση προεπισκόπησης για γρήγορη δημιουργία στο κινητό."""
     return {
         "Κάθετο": (480, 854),
         "Οριζόντιο": (854, 480),
         "Τετράγωνο": (600, 600),
     }.get(video_format, (480, 854))
+
+
+def clear_directory(directory: Path) -> None:
+    """Διαγράφει μόνο τα παλιά προσωρινά αρχεία του συγκεκριμένου φακέλου."""
+    directory.mkdir(parents=True, exist_ok=True)
+    for item in directory.iterdir():
+        if item.is_file() or item.is_symlink():
+            item.unlink(missing_ok=True)
+        elif item.is_dir():
+            shutil.rmtree(item)
 
 
 def run_process(
@@ -175,40 +195,128 @@ def run_ffmpeg(command: list[str]) -> None:
     run_process(command, title="φφμεγκ")
 
 
-def create_preview_video(scenes: list[Scene], video_format: str) -> str:
-    """Δημιουργεί πραγματικό δοκιμαστικό ΜΡ4 από τις τρεις υπάρχουσες εικόνες."""
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
+def save_uploaded_photos(uploaded_files: list) -> list[Path]:
+    """Αποθηκεύει με ασφάλεια έως είκοσι φωτογραφίες του χρήστη."""
+    clear_directory(UPLOAD_DIR)
+    saved: list[Path] = []
 
-    image_paths = [
+    real_files = [
+        photo
+        for photo in uploaded_files
+        if photo and str(getattr(photo, "filename", "")).strip()
+    ]
+
+    if len(real_files) > MAX_PHOTOS:
+        raise ValueError(f"Μπορείς να βάλεις έως {MAX_PHOTOS} φωτογραφίες.")
+
+    for index, photo in enumerate(real_files, start=1):
+        original_name = str(photo.filename)
+        extension = Path(original_name).suffix.lower()
+
+        if extension not in ALLOWED_IMAGE_EXTENSIONS:
+            raise ValueError(
+                "Επιτρέπονται μόνο φωτογραφίες JPG, JPEG, PNG ή WEBP."
+            )
+
+        safe_stem = secure_filename(Path(original_name).stem) or f"photo-{index}"
+        target = UPLOAD_DIR / f"{index:02d}-{safe_stem}{extension}"
+        photo.save(target)
+
+        if target.exists() and target.stat().st_size > 0:
+            saved.append(target)
+
+    return saved
+
+
+def default_image_paths() -> list[Path]:
+    """Επιστρέφει τις τρεις δοκιμαστικές εικόνες όταν δεν ανέβηκαν φωτογραφίες."""
+    paths = [
         BASE_DIR / "static" / "images" / "scene-1.png",
         BASE_DIR / "static" / "images" / "scene-2.png",
         BASE_DIR / "static" / "images" / "scene-3.png",
     ]
 
-    missing = [path.name for path in image_paths if not path.exists()]
+    missing = [path.name for path in paths if not path.exists()]
     if missing:
         raise RuntimeError(f"Λείπουν εικόνες προεπισκόπησης: {', '.join(missing)}")
 
+    return paths
+
+
+def normalize_images(
+    source_images: list[Path],
+    video_format: str,
+) -> list[Path]:
+    """Μετατρέπει όλες τις φωτογραφίες σε ίδιο μέγεθος και ίδια μορφή PNG."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
+
+    clear_directory(NORMALIZED_DIR)
+    width, height = video_dimensions(video_format)
+    video_filter = (
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+        "setsar=1"
+    )
+
+    normalized: list[Path] = []
+
+    for index, source in enumerate(source_images, start=1):
+        target = NORMALIZED_DIR / f"photo-{index:02d}.png"
+        command = [
+            ffmpeg,
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(source),
+            "-vf",
+            video_filter,
+            "-frames:v",
+            "1",
+            str(target),
+        ]
+        run_ffmpeg(command)
+
+        if not target.exists() or target.stat().st_size == 0:
+            raise RuntimeError(f"Δεν μπόρεσε να διαβαστεί η φωτογραφία {index}.")
+
+        normalized.append(target)
+
+    return normalized
+
+
+def create_preview_video(
+    scenes: list[Scene],
+    video_format: str,
+    source_images: list[Path],
+    using_own_photos: bool,
+) -> str:
+    """Δημιουργεί ΜΡ4 από τις φωτογραφίες που επέλεξε ο χρήστης."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
+
+    normalized_images = normalize_images(source_images, video_format)
+
     list_path = OUTPUT_DIR / "lista-skinon.txt"
-    output_path = OUTPUT_DIR / "dokimastiko-vinteo.mp4"
+    output_name = (
+        "vinteo-apo-dikes-mou-fotografies.mp4"
+        if using_own_photos
+        else "dokimastiko-vinteo.mp4"
+    )
+    output_path = OUTPUT_DIR / output_name
 
     selected_images: list[Path] = []
     with list_path.open("w", encoding="utf-8") as file:
         for index, scene in enumerate(scenes):
-            image_path = image_paths[index % len(image_paths)].resolve()
+            image_path = normalized_images[index % len(normalized_images)].resolve()
             selected_images.append(image_path)
             file.write(f"file '{image_path.as_posix()}'\n")
             file.write(f"duration {scene.duration_seconds}\n")
 
         file.write(f"file '{selected_images[-1].as_posix()}'\n")
-
-    width, height = video_dimensions(video_format)
-    video_filter = (
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
-    )
 
     common = [
         ffmpeg,
@@ -220,7 +328,7 @@ def create_preview_video(scenes: list[Scene], video_format: str) -> str:
         "-i",
         str(list_path),
         "-vf",
-        video_filter,
+        "format=yuv420p",
         "-fps_mode",
         "vfr",
         "-movflags",
@@ -277,13 +385,10 @@ def create_greek_narration(story: str, voice_label: str) -> tuple[str | None, st
 
     edge_tts = shutil.which("edge-tts")
     if not edge_tts:
-        raise RuntimeError(
-            "Το edge-tts δεν βρέθηκε. Γράψε: pip install edge-tts"
-        )
+        raise RuntimeError("Το edge-tts δεν βρέθηκε. Γράψε: pip install edge-tts")
 
     audio_path = OUTPUT_DIR / "elliniki-afhghsh.mp3"
-    if audio_path.exists():
-        audio_path.unlink()
+    audio_path.unlink(missing_ok=True)
 
     command = [
         edge_tts,
@@ -305,15 +410,21 @@ def create_greek_narration(story: str, voice_label: str) -> tuple[str | None, st
 def combine_video_and_narration(
     video_filename: str,
     narration_filename: str,
+    using_own_photos: bool,
 ) -> str:
-    """Ενώνει το δοκιμαστικό βίντεο με την ελληνική αφήγηση."""
+    """Ενώνει το βίντεο με την ελληνική αφήγηση."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
 
     video_path = OUTPUT_DIR / video_filename
     narration_path = OUTPUT_DIR / narration_filename
-    output_path = OUTPUT_DIR / "vinteo-me-elliniki-afhghsh.mp4"
+    output_name = (
+        "dikes-mou-fotografies-me-elliniki-afhghsh.mp4"
+        if using_own_photos
+        else "vinteo-me-elliniki-afhghsh.mp4"
+    )
+    output_path = OUTPUT_DIR / output_name
 
     command = [
         ffmpeg,
@@ -347,6 +458,16 @@ def combine_video_and_narration(
     return output_path.name
 
 
+@app.errorhandler(413)
+def too_large(_error):
+    return jsonify(
+        {
+            "ok": False,
+            "message": "Οι φωτογραφίες είναι πολύ μεγάλες. Το συνολικό όριο είναι 100 MB.",
+        }
+    ), 413
+
+
 @app.get("/")
 def home():
     return render_template("index.html")
@@ -359,7 +480,13 @@ def download_video(filename: str):
 
 @app.post("/api/dimiourgia")
 def dimiourgia():
-    data = request.get_json(silent=True) or {}
+    if request.mimetype == "multipart/form-data":
+        data = request.form
+        uploaded_files = request.files.getlist("photos")
+    else:
+        data = request.get_json(silent=True) or {}
+        uploaded_files = []
+
     story = clean_text(str(data.get("story", "")))
 
     if not story:
@@ -389,6 +516,14 @@ def dimiourgia():
             {"ok": False, "message": "Δεν μπόρεσαν να δημιουργηθούν σκηνές."}
         ), 400
 
+    try:
+        uploaded_photo_paths = save_uploaded_photos(uploaded_files)
+    except ValueError as error:
+        return jsonify({"ok": False, "message": str(error)}), 400
+
+    using_own_photos = bool(uploaded_photo_paths)
+    source_images = uploaded_photo_paths if using_own_photos else default_image_paths()
+
     video_url = None
     video_error = None
     narration_added = False
@@ -396,7 +531,12 @@ def dimiourgia():
     voice_used = "Χωρίς αφήγηση"
 
     try:
-        silent_video_filename = create_preview_video(scenes, options["format"])
+        silent_video_filename = create_preview_video(
+            scenes,
+            options["format"],
+            source_images,
+            using_own_photos,
+        )
         final_video_filename = silent_video_filename
 
         if options["voice"] != "Χωρίς αφήγηση":
@@ -409,6 +549,7 @@ def dimiourgia():
                     final_video_filename = combine_video_and_narration(
                         silent_video_filename,
                         narration_filename,
+                        using_own_photos,
                     )
                     narration_added = True
             except (RuntimeError, subprocess.TimeoutExpired) as error:
@@ -433,11 +574,8 @@ def dimiourgia():
             "narration_added": narration_added,
             "narration_error": narration_error,
             "voice_used": voice_used,
-            "preview_images": [
-                "/static/images/scene-1.png",
-                "/static/images/scene-2.png",
-                "/static/images/scene-3.png",
-            ],
+            "using_own_photos": using_own_photos,
+            "photo_count": len(source_images),
         }
     )
 

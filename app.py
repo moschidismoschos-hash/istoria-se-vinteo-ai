@@ -580,5 +580,171 @@ def dimiourgia():
     )
 
 
+
+def _motion_filter_v9(width: int, height: int, scene_index: int, duration: int) -> tuple[str, int]:
+    fps = 25
+    frames = max(1, duration * fps)
+    last = max(1, frames - 1)
+    mode = scene_index % 6
+
+    if mode == 0:
+        zoom, x, y = f"1+0.12*on/{last}", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+    elif mode == 1:
+        zoom, x, y = f"1.12-0.12*on/{last}", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+    elif mode == 2:
+        zoom, x, y = "1.10", f"(iw-iw/zoom)*on/{last}", "ih/2-(ih/zoom/2)"
+    elif mode == 3:
+        zoom, x, y = "1.10", f"(iw-iw/zoom)*(1-on/{last})", "ih/2-(ih/zoom/2)"
+    elif mode == 4:
+        zoom, x, y = "1.10", "iw/2-(iw/zoom/2)", f"(ih-ih/zoom)*on/{last}"
+    else:
+        zoom, x, y = "1.10", "iw/2-(iw/zoom/2)", f"(ih-ih/zoom)*(1-on/{last})"
+
+    return (
+        f"zoompan=z='{zoom}':x='{x}':y='{y}':d=1:"
+        f"s={width}x{height}:fps={fps},format=yuv420p"
+    ), frames
+
+
+def _make_motion_clip_v9(
+    ffmpeg: str,
+    image_path: Path,
+    clip_path: Path,
+    scene_index: int,
+    duration: int,
+    width: int,
+    height: int,
+    codec: str,
+) -> None:
+    video_filter, frames = _motion_filter_v9(
+        width, height, scene_index, duration
+    )
+
+    command = [
+        ffmpeg, "-y", "-loglevel", "error",
+        "-loop", "1", "-framerate", "25",
+        "-i", str(image_path),
+        "-vf", video_filter,
+        "-frames:v", str(frames),
+        "-an",
+    ]
+
+    if codec == "libx264":
+        command += [
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "28",
+            "-pix_fmt", "yuv420p",
+        ]
+    else:
+        command += [
+            "-c:v", "mpeg4",
+            "-q:v", "5",
+            "-pix_fmt", "yuv420p",
+        ]
+
+    command.append(str(clip_path))
+    run_ffmpeg(command)
+
+
+def create_preview_video(
+    scenes: list[Scene],
+    video_format: str,
+    source_images: list[Path],
+    using_own_photos: bool,
+) -> str:
+    """Δημιουργεί βίντεο με ζουμ και ομαλή κίνηση στις φωτογραφίες."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
+
+    normalized = normalize_images(source_images, video_format)
+    clips_dir = OUTPUT_DIR / "scene-clips"
+    clear_directory(clips_dir)
+    width, height = video_dimensions(video_format)
+
+    def build(codec: str) -> list[Path]:
+        clear_directory(clips_dir)
+        clips: list[Path] = []
+
+        for index, scene in enumerate(scenes):
+            image = normalized[index % len(normalized)]
+            clip = clips_dir / f"scene-{index + 1:02d}.mp4"
+            _make_motion_clip_v9(
+                ffmpeg,
+                image,
+                clip,
+                index,
+                scene.duration_seconds,
+                width,
+                height,
+                codec,
+            )
+            clips.append(clip)
+
+        return clips
+
+    try:
+        clips = build("libx264")
+        codec = "libx264"
+    except RuntimeError:
+        clips = build("mpeg4")
+        codec = "mpeg4"
+
+    list_file = OUTPUT_DIR / "lista-kinoumenon-skinon.txt"
+    with list_file.open("w", encoding="utf-8") as file:
+        for clip in clips:
+            file.write(f"file '{clip.resolve().as_posix()}'\n")
+
+    output_name = (
+        "kinoumeno-vinteo-apo-dikes-mou-fotografies.mp4"
+        if using_own_photos
+        else "kinoumeno-dokimastiko-vinteo.mp4"
+    )
+    output_path = OUTPUT_DIR / output_name
+    output_path.unlink(missing_ok=True)
+
+    concat = [
+        ffmpeg, "-y", "-loglevel", "error",
+        "-f", "concat", "-safe", "0",
+        "-i", str(list_file),
+        "-c", "copy",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+
+    try:
+        run_ffmpeg(concat)
+    except RuntimeError:
+        command = [
+            ffmpeg, "-y", "-loglevel", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", str(list_file),
+        ]
+
+        if codec == "libx264":
+            command += [
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "28",
+            ]
+        else:
+            command += ["-c:v", "mpeg4", "-q:v", "5"]
+
+        command += [
+            "-pix_fmt", "yuv420p",
+            "-an",
+            "-movflags", "+faststart",
+            str(output_path),
+        ]
+        run_ffmpeg(command)
+
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise RuntimeError("Το κινούμενο βίντεο δεν δημιουργήθηκε σωστά.")
+
+    return output_path.name
+
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)

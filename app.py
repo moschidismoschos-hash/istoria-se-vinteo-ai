@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import textwrap
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -366,6 +367,200 @@ def create_preview_video(
     return output_path.name
 
 
+def ass_timestamp(total_seconds: float) -> str:
+    """Μετατρέπει δευτερόλεπτα σε χρόνο μορφής ASS."""
+    total_centiseconds = max(0, round(total_seconds * 100))
+    hours, remainder = divmod(total_centiseconds, 360000)
+    minutes, remainder = divmod(remainder, 6000)
+    seconds, centiseconds = divmod(remainder, 100)
+    return f"{hours}:{minutes:02d}:{seconds:02d}.{centiseconds:02d}"
+
+
+def escape_ass_text(text: str, line_width: int) -> str:
+    """Καθαρίζει και χωρίζει μία μικρή φράση σε έως δύο γραμμές."""
+    safe_text = (
+        text.replace("\\", r"\\")
+        .replace("{", r"\{")
+        .replace("}", r"\}")
+        .strip()
+    )
+    wrapped = textwrap.wrap(
+        safe_text,
+        width=line_width,
+        break_long_words=False,
+        break_on_hyphens=False,
+        max_lines=2,
+        placeholder="…",
+    )
+    return r"\N".join(wrapped) if wrapped else safe_text
+
+
+def split_subtitle_chunks(text: str, max_words: int = 5) -> list[str]:
+    """Χωρίζει κάθε σκηνή σε μικρές φράσεις που αλλάζουν διαδοχικά."""
+    words = text.split()
+    if not words:
+        return []
+
+    chunks: list[str] = []
+    current: list[str] = []
+
+    for word in words:
+        current.append(word)
+        ends_phrase = word.rstrip().endswith((".", "!", "?", ";", ":", ","))
+        reached_limit = len(current) >= max_words
+
+        if reached_limit or (ends_phrase and len(current) >= 3):
+            chunks.append(" ".join(current).strip())
+            current = []
+
+    if current:
+        if chunks and len(current) <= 2:
+            chunks[-1] = f"{chunks[-1]} {' '.join(current)}".strip()
+        else:
+            chunks.append(" ".join(current).strip())
+
+    return [chunk for chunk in chunks if chunk]
+
+
+def create_ass_subtitles(scenes: list[Scene], video_format: str) -> Path:
+    """Δημιουργεί μικρούς ελληνικούς υπότιτλους που αλλάζουν συνεχώς."""
+    width, height = video_dimensions(video_format)
+    style_settings = {
+        "Κάθετο": (25, 24, 72),
+        "Οριζόντιο": (24, 46, 34),
+        "Τετράγωνο": (25, 34, 46),
+    }
+    font_size, line_width, margin_vertical = style_settings.get(
+        video_format,
+        (25, 24, 72),
+    )
+
+    subtitle_path = OUTPUT_DIR / "ellinikoi-ypotitloi.ass"
+    header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {width}
+PlayResY: {height}
+ScaledBorderAndShadow: yes
+WrapStyle: 2
+Timer: 100.0000
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,sans-serif,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,3,2,0,2,22,22,{margin_vertical},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    events: list[str] = []
+    scene_start = 0.0
+
+    for scene in scenes:
+        chunks = split_subtitle_chunks(scene.narration, max_words=5)
+        scene_duration = float(scene.duration_seconds)
+
+        if not chunks:
+            scene_start += scene_duration
+            continue
+
+        word_counts = [max(1, len(chunk.split())) for chunk in chunks]
+        total_words = max(1, sum(word_counts))
+        words_before = 0
+
+        for index, (chunk, word_count) in enumerate(zip(chunks, word_counts)):
+            start_time = scene_start + scene_duration * words_before / total_words
+            words_before += word_count
+            natural_end = scene_start + scene_duration * words_before / total_words
+
+            end_time = natural_end
+            if index < len(chunks) - 1:
+                end_time = max(start_time + 0.35, natural_end - 0.06)
+
+            subtitle_text = escape_ass_text(chunk, line_width)
+            events.append(
+                "Dialogue: 0,"
+                f"{ass_timestamp(start_time)},{ass_timestamp(end_time)},"
+                f"Default,,0,0,0,,{subtitle_text}"
+            )
+
+        scene_start += scene_duration
+
+    subtitle_path.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
+    return subtitle_path
+
+
+def burn_subtitles(
+    video_filename: str,
+    scenes: list[Scene],
+    video_format: str,
+    using_own_photos: bool,
+) -> str:
+    """Ενσωματώνει μόνιμα τους ελληνικούς υπότιτλους στο βίντεο."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
+
+    video_path = OUTPUT_DIR / video_filename
+    subtitle_path = create_ass_subtitles(scenes, video_format)
+    output_name = (
+        "kinoumeno-vinteo-me-ellinikous-ypotitlous.mp4"
+        if using_own_photos
+        else "dokimastiko-vinteo-me-ellinikous-ypotitlous.mp4"
+    )
+    output_path = OUTPUT_DIR / output_name
+    output_path.unlink(missing_ok=True)
+
+    subtitle_filter = f"ass={subtitle_path.as_posix()}"
+    common = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-vf",
+        subtitle_filter,
+        "-an",
+        "-movflags",
+        "+faststart",
+    ]
+
+    try:
+        run_ffmpeg(
+            common
+            + [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "27",
+                "-pix_fmt",
+                "yuv420p",
+                str(output_path),
+            ]
+        )
+    except RuntimeError:
+        run_ffmpeg(
+            common
+            + [
+                "-c:v",
+                "mpeg4",
+                "-q:v",
+                "5",
+                "-pix_fmt",
+                "yuv420p",
+                str(output_path),
+            ]
+        )
+
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise RuntimeError("Το βίντεο με ελληνικούς υπότιτλους δεν δημιουργήθηκε.")
+
+    return output_path.name
+
+
+
 def resolve_greek_voice(voice_label: str) -> tuple[str | None, str]:
     """Μετατρέπει την επιλογή της εφαρμογής σε διαθέσιμη ελληνική φωνή."""
     if voice_label == "Χωρίς αφήγηση":
@@ -377,18 +572,23 @@ def resolve_greek_voice(voice_label: str) -> tuple[str | None, str]:
     return "el-GR-AthinaNeural", "Γυναικεία ελληνική φωνή"
 
 
-def create_greek_narration(story: str, voice_label: str) -> tuple[str | None, str]:
-    """Δημιουργεί ελληνική αφήγηση ΜΡ3 με το εγκατεστημένο edge-tts."""
+def create_greek_narration(
+    story: str,
+    voice_label: str,
+) -> tuple[str | None, str, str | None]:
+    # Δημιουργεί αφήγηση και χρονισμένους υπότιτλους από το edge-tts.
     voice_name, friendly_name = resolve_greek_voice(voice_label)
     if voice_name is None:
-        return None, friendly_name
+        return None, friendly_name, None
 
     edge_tts = shutil.which("edge-tts")
     if not edge_tts:
         raise RuntimeError("Το edge-tts δεν βρέθηκε. Γράψε: pip install edge-tts")
 
     audio_path = OUTPUT_DIR / "elliniki-afhghsh.mp3"
+    subtitle_path = OUTPUT_DIR / "elliniki-afhghsh.srt"
     audio_path.unlink(missing_ok=True)
+    subtitle_path.unlink(missing_ok=True)
 
     command = [
         edge_tts,
@@ -398,19 +598,284 @@ def create_greek_narration(story: str, voice_label: str) -> tuple[str | None, st
         story,
         "--write-media",
         str(audio_path),
+        "--write-subtitles",
+        str(subtitle_path),
     ]
     run_process(command, title="ελληνικής αφήγησης", timeout=600)
 
     if not audio_path.exists() or audio_path.stat().st_size == 0:
         raise RuntimeError("Η ελληνική αφήγηση δεν δημιουργήθηκε σωστά.")
 
-    return audio_path.name, friendly_name
+    subtitle_name = None
+    if subtitle_path.exists() and subtitle_path.stat().st_size > 0:
+        subtitle_name = subtitle_path.name
+
+    return audio_path.name, friendly_name, subtitle_name
+
+
+def _srt_time_to_ms(value: str) -> int:
+    hours, minutes, rest = value.strip().replace(".", ",").split(":")
+    seconds, milliseconds = rest.split(",")
+    return (
+        int(hours) * 3_600_000
+        + int(minutes) * 60_000
+        + int(seconds) * 1_000
+        + int(milliseconds)
+    )
+
+
+def _ms_to_srt_time(value: int) -> str:
+    value = max(0, int(value))
+    hours, remainder = divmod(value, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    seconds, milliseconds = divmod(remainder, 1_000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+
+
+def _split_subtitle_text(text: str, max_chars: int = 25) -> list[str]:
+    clean = re.sub(r"<[^>]+>", "", text)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    if not clean:
+        return []
+
+    words = clean.split(" ")
+    chunks: list[str] = []
+    current: list[str] = []
+
+    for word in words:
+        candidate = " ".join(current + [word]).strip()
+        punctuation_break = bool(
+            current and re.search(r"[.!?;·,:]$", current[-1])
+        )
+
+        if current and (
+            len(candidate) > max_chars
+            or len(current) >= 4
+            or punctuation_break
+        ):
+            chunks.append(" ".join(current))
+            current = [word]
+        else:
+            current.append(word)
+
+    if current:
+        chunks.append(" ".join(current))
+
+    return chunks
+
+
+def prepare_compact_subtitles(
+    subtitle_filename: str,
+    video_format: str,
+) -> Path:
+    source_path = OUTPUT_DIR / subtitle_filename
+    if not source_path.exists():
+        raise RuntimeError("Δεν βρέθηκαν οι χρονισμένοι υπότιτλοι.")
+
+    raw = source_path.read_text(encoding="utf-8-sig", errors="replace")
+    raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+    blocks = re.split(r"\n\s*\n", raw.strip())
+
+    max_chars = {
+        "Κάθετο": 22,
+        "Οριζόντιο": 34,
+        "Τετράγωνο": 26,
+    }.get(video_format, 22)
+
+    time_pattern = re.compile(
+        r"(?P<start>\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*"
+        r"(?P<end>\d{2}:\d{2}:\d{2}[,.]\d{3})"
+    )
+
+    output_blocks: list[str] = []
+    cue_number = 1
+
+    for block in blocks:
+        lines = [
+            line.strip()
+            for line in block.split("\n")
+            if line.strip()
+        ]
+        time_index = next(
+            (i for i, line in enumerate(lines) if "-->" in line),
+            None,
+        )
+        if time_index is None:
+            continue
+
+        match = time_pattern.search(lines[time_index])
+        if not match:
+            continue
+
+        text = " ".join(lines[time_index + 1 :]).strip()
+        chunks = _split_subtitle_text(text, max_chars=max_chars)
+        if not chunks:
+            continue
+
+        start_ms = _srt_time_to_ms(match.group("start"))
+        end_ms = _srt_time_to_ms(match.group("end"))
+        total_ms = max(500, end_ms - start_ms)
+
+        weights = [
+            max(1, len(chunk.replace(" ", "")))
+            for chunk in chunks
+        ]
+        total_weight = sum(weights)
+        cursor = start_ms
+
+        for index, (chunk, weight) in enumerate(
+            zip(chunks, weights)
+        ):
+            if index == len(chunks) - 1:
+                chunk_end = end_ms
+            else:
+                duration = max(
+                    350,
+                    round(total_ms * weight / total_weight),
+                )
+                chunk_end = min(end_ms, cursor + duration)
+
+            if chunk_end <= cursor:
+                chunk_end = min(end_ms, cursor + 350)
+
+            output_blocks.append(
+                f"{cue_number}\n"
+                f"{_ms_to_srt_time(cursor)} --> "
+                f"{_ms_to_srt_time(chunk_end)}\n"
+                f"{chunk}"
+            )
+            cue_number += 1
+            cursor = chunk_end
+
+            if cursor >= end_ms:
+                break
+
+    if not output_blocks:
+        raise RuntimeError(
+            "Δεν δημιουργήθηκαν μικρές φράσεις υποτίτλων."
+        )
+
+    output_path = (
+        OUTPUT_DIR / "elliniki-afhghsh-mikres-fraseis.srt"
+    )
+    output_path.write_text(
+        "\n\n".join(output_blocks) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def burn_synced_subtitles(
+    video_filename: str,
+    subtitle_filename: str,
+    video_format: str,
+    using_own_photos: bool,
+) -> str:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
+
+    video_path = OUTPUT_DIR / video_filename
+    subtitle_path = prepare_compact_subtitles(
+        subtitle_filename,
+        video_format,
+    )
+
+    style_settings = {
+        "Κάθετο": (8, 54),
+        "Οριζόντιο": (13, 28),
+        "Τετράγωνο": (10, 40),
+    }
+    font_size, margin_vertical = style_settings.get(
+        video_format,
+        (8, 54),
+    )
+
+    escaped_path = (
+        subtitle_path.resolve().as_posix().replace("'", r"\'")
+    )
+    subtitle_filter = (
+        f"subtitles='{escaped_path}':"
+        "force_style='FontName=DejaVu Sans,"
+        f"FontSize={font_size},"
+        "PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H00000000,"
+        "BackColour=&H80000000,"
+        "Bold=1,"
+        "BorderStyle=1,"
+        "Outline=2,"
+        "Shadow=0,"
+        "Alignment=2,"
+        f"MarginV={margin_vertical}'"
+    )
+
+    output_name = (
+        "dikes-mou-fotografies-me-mikrous-ypotitlous.mp4"
+        if using_own_photos
+        else "vinteo-me-mikrous-ypotitlous.mp4"
+    )
+    output_path = OUTPUT_DIR / output_name
+    output_path.unlink(missing_ok=True)
+
+    common = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-vf",
+        subtitle_filter,
+        "-an",
+        "-movflags",
+        "+faststart",
+    ]
+
+    try:
+        run_ffmpeg(
+            common
+            + [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "27",
+                "-pix_fmt",
+                "yuv420p",
+                str(output_path),
+            ]
+        )
+    except RuntimeError:
+        run_ffmpeg(
+            common
+            + [
+                "-c:v",
+                "mpeg4",
+                "-q:v",
+                "5",
+                "-pix_fmt",
+                "yuv420p",
+                str(output_path),
+            ]
+        )
+
+    if (
+        not output_path.exists()
+        or output_path.stat().st_size == 0
+    ):
+        raise RuntimeError(
+            "Το βίντεο με μικρούς υπότιτλους δεν δημιουργήθηκε."
+        )
+
+    return output_path.name
 
 
 def combine_video_and_narration(
     video_filename: str,
     narration_filename: str,
     using_own_photos: bool,
+    subtitles_added: bool,
 ) -> str:
     """Ενώνει το βίντεο με την ελληνική αφήγηση."""
     ffmpeg = shutil.which("ffmpeg")
@@ -419,11 +884,14 @@ def combine_video_and_narration(
 
     video_path = OUTPUT_DIR / video_filename
     narration_path = OUTPUT_DIR / narration_filename
-    output_name = (
-        "dikes-mou-fotografies-me-elliniki-afhghsh.mp4"
-        if using_own_photos
-        else "vinteo-me-elliniki-afhghsh.mp4"
-    )
+    if using_own_photos and subtitles_added:
+        output_name = "dikes-mou-fotografies-me-afhghsh-kai-ypotitlous.mp4"
+    elif using_own_photos:
+        output_name = "dikes-mou-fotografies-me-elliniki-afhghsh.mp4"
+    elif subtitles_added:
+        output_name = "vinteo-me-afhghsh-kai-ypotitlous.mp4"
+    else:
+        output_name = "vinteo-me-elliniki-afhghsh.mp4"
     output_path = OUTPUT_DIR / output_name
 
     command = [
@@ -502,6 +970,7 @@ def dimiourgia():
         "duration": str(data.get("duration", "1 λεπτό")),
         "voice": str(data.get("voice", "Ελληνικά")),
         "format": str(data.get("format", "Κάθετο")),
+        "subtitles": str(data.get("subtitles", "Με υπότιτλους")),
     }
 
     scenes = create_storyboard(
@@ -529,6 +998,8 @@ def dimiourgia():
     narration_added = False
     narration_error = None
     voice_used = "Χωρίς αφήγηση"
+    subtitles_added = False
+    subtitles_error = None
 
     try:
         silent_video_filename = create_preview_video(
@@ -539,19 +1010,51 @@ def dimiourgia():
         )
         final_video_filename = silent_video_filename
 
+        narration_filename = None
+        timed_subtitles_filename = None
+
         if options["voice"] != "Χωρίς αφήγηση":
             try:
-                narration_filename, voice_used = create_greek_narration(
+                (
+                    narration_filename,
+                    voice_used,
+                    timed_subtitles_filename,
+                ) = create_greek_narration(
                     story,
                     options["voice"],
                 )
-                if narration_filename:
-                    final_video_filename = combine_video_and_narration(
+            except (RuntimeError, subprocess.TimeoutExpired) as error:
+                narration_error = str(error)
+
+        if options["subtitles"] != "Χωρίς υπότιτλους":
+            try:
+                if timed_subtitles_filename:
+                    final_video_filename = burn_synced_subtitles(
                         silent_video_filename,
-                        narration_filename,
+                        timed_subtitles_filename,
+                        options["format"],
                         using_own_photos,
                     )
-                    narration_added = True
+                else:
+                    final_video_filename = burn_subtitles(
+                        silent_video_filename,
+                        scenes,
+                        options["format"],
+                        using_own_photos,
+                    )
+                subtitles_added = True
+            except (RuntimeError, subprocess.TimeoutExpired) as error:
+                subtitles_error = str(error)
+
+        if narration_filename:
+            try:
+                final_video_filename = combine_video_and_narration(
+                    final_video_filename,
+                    narration_filename,
+                    using_own_photos,
+                    subtitles_added,
+                )
+                narration_added = True
             except (RuntimeError, subprocess.TimeoutExpired) as error:
                 narration_error = str(error)
 
@@ -574,6 +1077,8 @@ def dimiourgia():
             "narration_added": narration_added,
             "narration_error": narration_error,
             "voice_used": voice_used,
+            "subtitles_added": subtitles_added,
+            "subtitles_error": subtitles_error,
             "using_own_photos": using_own_photos,
             "photo_count": len(source_images),
         }

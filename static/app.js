@@ -9,6 +9,27 @@ const toast = document.getElementById("toast");
 let toastTimer;
 let previewObjectUrls = [];
 
+function installSubtitleSetting() {
+  if (document.getElementById("subtitles")) return;
+
+  const row = document.createElement("label");
+  row.className = "setting-row";
+  row.innerHTML = `
+    <span class="setting-left">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 4h16a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H4a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3Zm0 2a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H4Zm2.5 4.2h3v1.6h-3a1.2 1.2 0 0 0 0 2.4h3v1.6h-3a2.8 2.8 0 1 1 0-5.6Zm8 0h3v1.6h-3a1.2 1.2 0 0 0 0 2.4h3v1.6h-3a2.8 2.8 0 1 1 0-5.6Z"/>
+      </svg>
+      <span>Ελληνικοί υπότιτλοι</span>
+    </span>
+    <select id="subtitles" aria-label="Ελληνικοί υπότιτλοι">
+      <option>Με υπότιτλους</option>
+      <option>Χωρίς υπότιτλους</option>
+    </select>
+  `;
+
+  document.querySelector(".settings").appendChild(row);
+}
+
 function installPhotoUploader() {
   if (document.getElementById("photoUploader")) return;
 
@@ -221,6 +242,7 @@ async function startCreation() {
   const scenePanel = document.getElementById("sceneDetails");
   const downloadVideo = document.getElementById("downloadVideo");
   const selectedVoice = document.getElementById("voice").value;
+  const selectedSubtitles = document.getElementById("subtitles").value;
   const photos = selectedPhotos();
 
   if (!text) {
@@ -256,6 +278,7 @@ async function startCreation() {
   formData.append("duration", document.getElementById("duration").value);
   formData.append("voice", selectedVoice);
   formData.append("format", document.getElementById("format").value);
+  formData.append("subtitles", selectedSubtitles);
   photos.forEach((photo) => formData.append("photos", photo, photo.name));
 
   try {
@@ -313,6 +336,7 @@ async function startCreation() {
   }
 }
 
+installSubtitleSetting();
 installPhotoUploader();
 installScenePanel();
 story.addEventListener("input", updateCounter);

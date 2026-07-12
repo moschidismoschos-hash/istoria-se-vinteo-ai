@@ -16,23 +16,15 @@ function showToast(message) {
   clearTimeout(toastTimer);
   toast.textContent = message;
   toast.classList.add("show");
-  toastTimer = setTimeout(() => toast.classList.remove("show"), 3200);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 3600);
 }
 
-function setProgress(stepIndex, message) {
-  const percentages = [0, 34, 67, 100];
-  progressLine.style.width = `${percentages[stepIndex]}%`;
-
+function resetProgress() {
+  progressLine.style.width = "0%";
   progressSteps.forEach((step, index) => {
-    step.classList.toggle("active", index === stepIndex);
-    step.classList.toggle("done", index < stepIndex);
+    step.classList.toggle("active", index === 0);
+    step.classList.remove("done");
   });
-
-  statusMessage.textContent = message;
-}
-
-function wait(milliseconds) {
-  return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 async function startCreation() {
@@ -45,7 +37,9 @@ async function startCreation() {
   }
 
   createButton.disabled = true;
-  createButton.innerHTML = "<span>✦</span><span>Δημιουργία…</span>";
+  createButton.innerHTML = "<span>✦</span><span>Ανάλυση ιστορίας…</span>";
+  resetProgress();
+  statusMessage.textContent = "Η ιστορία αναλύεται και χωρίζεται σε σκηνές…";
 
   try {
     const response = await fetch("/api/dimiourgia", {
@@ -66,24 +60,15 @@ async function startCreation() {
       throw new Error(data.message || "Παρουσιάστηκε πρόβλημα.");
     }
 
-    setProgress(0, "Δημιουργούνται οι εικόνες των σκηνών…");
-    await wait(900);
-    setProgress(1, "Οι σκηνές μετατρέπονται σε βίντεο…");
-    await wait(900);
-    setProgress(2, "Προστίθεται η ελληνική αφήγηση…");
-    await wait(900);
-    setProgress(3, "Ολοκληρώνεται η τελική εξαγωγή…");
-    await wait(800);
+    progressSteps[0].classList.remove("active");
+    progressSteps[0].classList.add("done");
+    progressLine.style.width = "0%";
+    statusMessage.textContent = `${data.message} Έτοιμες οι περιγραφές τους.`;
+    showToast(data.message);
 
-    progressSteps.forEach(step => {
-      step.classList.remove("active");
-      step.classList.add("done");
-    });
-    progressLine.style.width = "100%";
-    statusMessage.textContent = "Η δοκιμαστική διαδικασία ολοκληρώθηκε";
-    showToast("Η πρώτη λειτουργική έκδοση δουλεύει σωστά.");
+    console.table(data.scenes);
   } catch (error) {
-    setProgress(0, "Η διαδικασία σταμάτησε");
+    statusMessage.textContent = "Η διαδικασία σταμάτησε";
     showToast(error.message);
   } finally {
     createButton.disabled = false;

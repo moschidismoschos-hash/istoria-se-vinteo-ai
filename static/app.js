@@ -9,7 +9,7 @@ const toast = document.getElementById("toast");
 let toastTimer;
 let previewObjectUrls = [];
 
-function installLanguageAndVideoModeSettings() {
+function installLanguageSetting() {
   if (document.getElementById("language")) return;
 
   const voiceRow = document.getElementById("voice").closest(".setting-row");
@@ -29,26 +29,10 @@ function installLanguageAndVideoModeSettings() {
   `;
   voiceRow.insertAdjacentElement("beforebegin", languageRow);
 
-  const videoModeRow = document.createElement("label");
-  videoModeRow.className = "setting-row";
-  videoModeRow.innerHTML = `
-    <span class="setting-left">
-      <span aria-hidden="true" style="font-size:1.2rem">▤</span>
-      <span>Τρόπος βίντεο</span>
-    </span>
-    <select id="videoMode" aria-label="Τρόπος βίντεο">
-      <option>Με φωτογραφίες</option>
-      <option>Χωρίς φωτογραφίες</option>
-    </select>
-  `;
-  settings.appendChild(videoModeRow);
 
   document
     .getElementById("language")
     .addEventListener("change", updateVoiceOptions);
-  document
-    .getElementById("videoMode")
-    .addEventListener("change", updateVideoMode);
 }
 
 function updateVoiceOptions() {
@@ -69,39 +53,6 @@ function updateVoiceOptions() {
     voice.value = previous;
   } else {
     voice.value = "Γυναικεία φωνή";
-  }
-}
-
-function updateVideoMode() {
-  const withoutPhotos =
-    document.getElementById("videoMode").value === "Χωρίς φωτογραφίες";
-  const uploader = document.getElementById("photoUploader");
-  const previewSection = document.querySelector(".preview-section");
-  const firstStepLabel =
-    document.querySelector('.progress-step[data-step="0"] span');
-
-  if (uploader) uploader.hidden = withoutPhotos;
-  if (previewSection) previewSection.hidden = withoutPhotos;
-  if (firstStepLabel) {
-    firstStepLabel.innerHTML = withoutPhotos
-      ? "Δημιουργία<br>φόντου"
-      : "Δημιουργία<br>εικόνων";
-  }
-
-  if (withoutPhotos) {
-    const input = document.getElementById("photoInput");
-    const selection = document.getElementById("photoSelection");
-    const thumbnails = document.getElementById("photoThumbnails");
-
-    if (input) input.value = "";
-    if (thumbnails) thumbnails.replaceChildren();
-    if (selection) {
-      selection.textContent =
-        "Δεν χρειάζονται φωτογραφίες — θα δημιουργηθεί κινούμενο φόντο.";
-    }
-
-    previewObjectUrls.forEach((url) => URL.revokeObjectURL(url));
-    previewObjectUrls = [];
   }
 }
 
@@ -341,7 +292,6 @@ async function startCreation() {
   const selectedLanguage = document.getElementById("language").value;
   const selectedVoice = document.getElementById("voice").value;
   const selectedSubtitles = document.getElementById("subtitles").value;
-  const selectedVideoMode = document.getElementById("videoMode").value;
   const photos = selectedPhotos();
 
   if (!text) {
@@ -367,14 +317,9 @@ async function startCreation() {
   createButton.innerHTML = "<span>✦</span><span>Δημιουργία βίντεο…</span>";
   resetProgress();
 
-  if (selectedVideoMode === "Χωρίς φωτογραφίες") {
-    statusMessage.textContent =
-      "Δημιουργείται κινούμενο βίντεο μόνο από το κείμενο…";
-  } else {
-    statusMessage.textContent = photos.length
-      ? `Χρησιμοποιούνται ${photos.length} δικές σου φωτογραφίες για το βίντεο…`
-      : "Χρησιμοποιούνται οι δοκιμαστικές εικόνες για το βίντεο…";
-  }
+  statusMessage.textContent = photos.length
+    ? `Χρησιμοποιούνται ${photos.length} δικές σου φωτογραφίες για το βίντεο…`
+    : "Χρησιμοποιούνται οι δοκιμαστικές εικόνες για το βίντεο…";
 
   const formData = new FormData();
   formData.append("story", text);
@@ -384,7 +329,6 @@ async function startCreation() {
   formData.append("voice", selectedVoice);
   formData.append("format", document.getElementById("format").value);
   formData.append("subtitles", selectedSubtitles);
-  formData.append("video_mode", selectedVideoMode);
   photos.forEach((photo) => formData.append("photos", photo, photo.name));
 
   try {
@@ -401,11 +345,9 @@ async function startCreation() {
 
     renderScenes(data.scenes);
 
-    const sourceText = data.using_text_background
-      ? "Δημιουργήθηκε κινούμενο φόντο χωρίς φωτογραφίες."
-      : data.using_own_photos
-        ? `Χρησιμοποιήθηκαν ${data.photo_count} δικές σου φωτογραφίες.`
-        : "Χρησιμοποιήθηκαν οι τρεις δοκιμαστικές εικόνες.";
+    const sourceText = data.using_own_photos
+      ? `Χρησιμοποιήθηκαν ${data.photo_count} δικές σου φωτογραφίες.`
+      : "Χρησιμοποιήθηκαν οι τρεις δοκιμαστικές εικόνες.";
 
     if (data.video_url) {
       downloadVideo.href = data.video_url;
@@ -444,12 +386,11 @@ async function startCreation() {
   }
 }
 
-installLanguageAndVideoModeSettings();
+installLanguageSetting();
 installSubtitleSetting();
 installPhotoUploader();
 installScenePanel();
 updateVoiceOptions();
-updateVideoMode();
 story.addEventListener("input", updateCounter);
 createButton.addEventListener("click", startCreation);
 updateCounter();

@@ -883,93 +883,6 @@ def burn_synced_subtitles(
     return output_path.name
 
 
-def create_text_background_video(
-    scenes: list[Scene],
-    video_format: str,
-    style: str,
-) -> str:
-    """Δημιουργεί φωτεινό κινούμενο φόντο χωρίς φωτογραφίες."""
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
-
-    width, height = video_dimensions(video_format)
-    total_seconds = max(
-        1,
-        sum(scene.duration_seconds for scene in scenes),
-    )
-
-    background_color = {
-        "Ρεαλιστικό": "0x245b82",
-        "Κινηματογραφικό": "0x176b70",
-        "Παραμύθι": "0x6a3d9a",
-        "Τρόμου": "0x7a2638",
-    }.get(style, "0x245b82")
-
-    output_path = OUTPUT_DIR / "vinteo-mono-apo-keimeno.mp4"
-    output_path.unlink(missing_ok=True)
-
-    source = (
-        f"color=c={background_color}:"
-        f"s={width}x{height}:r=25:d={total_seconds}"
-    )
-
-    video_filter = (
-        "noise=alls=20:allf=t+u,"
-        "hue=h='18*t':s=1.35,"
-        "eq=contrast=1.18:brightness=0.10:saturation=1.35,"
-        "drawgrid=w=iw/8:h=ih/12:t=2:c=white@0.08,"
-        "format=yuv420p"
-    )
-
-    common = [
-        ffmpeg,
-        "-y",
-        "-loglevel",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        source,
-        "-vf",
-        video_filter,
-        "-an",
-        "-movflags",
-        "+faststart",
-    ]
-
-    try:
-        run_ffmpeg(
-            common
-            + [
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "25",
-                str(output_path),
-            ]
-        )
-    except RuntimeError:
-        run_ffmpeg(
-            common
-            + [
-                "-c:v",
-                "mpeg4",
-                "-q:v",
-                "4",
-                str(output_path),
-            ]
-        )
-
-    if not output_path.exists() or output_path.stat().st_size == 0:
-        raise RuntimeError(
-            "Το φωτεινό βίντεο χωρίς φωτογραφίες δεν δημιουργήθηκε."
-        )
-
-    return output_path.name
-
 
 def combine_video_and_narration(
     video_filename: str,
@@ -1072,7 +985,6 @@ def dimiourgia():
         "voice": str(data.get("voice", "Γυναικεία φωνή")),
         "format": str(data.get("format", "Κάθετο")),
         "subtitles": str(data.get("subtitles", "Με υπότιτλους")),
-        "video_mode": str(data.get("video_mode", "Με φωτογραφίες")),
     }
 
     scenes = create_storyboard(
@@ -1087,28 +999,17 @@ def dimiourgia():
             {"ok": False, "message": "Δεν μπόρεσαν να δημιουργηθούν σκηνές."}
         ), 400
 
-    using_text_background = (
-        options["video_mode"] == "Χωρίς φωτογραφίες"
-    )
-
-    if using_text_background:
-        clear_directory(UPLOAD_DIR)
-        uploaded_photo_paths = []
-    else:
-        try:
-            uploaded_photo_paths = save_uploaded_photos(uploaded_files)
-        except ValueError as error:
-            return jsonify({"ok": False, "message": str(error)}), 400
+    try:
+        uploaded_photo_paths = save_uploaded_photos(uploaded_files)
+    except ValueError as error:
+        return jsonify({"ok": False, "message": str(error)}), 400
 
     using_own_photos = bool(uploaded_photo_paths)
-    if using_text_background:
-        source_images = []
-    else:
-        source_images = (
-            uploaded_photo_paths
-            if using_own_photos
-            else default_image_paths()
-        )
+    source_images = (
+        uploaded_photo_paths
+        if using_own_photos
+        else default_image_paths()
+    )
 
     video_url = None
     video_error = None
@@ -1119,19 +1020,12 @@ def dimiourgia():
     subtitles_error = None
 
     try:
-        if using_text_background:
-            silent_video_filename = create_text_background_video(
-                scenes,
-                options["format"],
-                options["style"],
-            )
-        else:
-            silent_video_filename = create_preview_video(
-                scenes,
-                options["format"],
-                source_images,
-                using_own_photos,
-            )
+        silent_video_filename = create_preview_video(
+            scenes,
+            options["format"],
+            source_images,
+            using_own_photos,
+        )
         final_video_filename = silent_video_filename
 
         narration_filename = None
@@ -1205,7 +1099,6 @@ def dimiourgia():
             "subtitles_added": subtitles_added,
             "subtitles_error": subtitles_error,
             "using_own_photos": using_own_photos,
-            "using_text_background": using_text_background,
             "photo_count": len(source_images),
             "language": options["language"],
         }

@@ -561,32 +561,44 @@ def burn_subtitles(
 
 
 
-def resolve_greek_voice(voice_label: str) -> tuple[str | None, str]:
-    """Μετατρέπει την επιλογή της εφαρμογής σε διαθέσιμη ελληνική φωνή."""
+def resolve_voice(
+    voice_label: str,
+    language: str,
+) -> tuple[str | None, str]:
+    # Επιλέγει ελληνική ή αγγλική φωνή.
     if voice_label == "Χωρίς αφήγηση":
         return None, "Χωρίς αφήγηση"
 
-    if voice_label == "Ανδρική φωνή":
-        return "el-GR-NestorasNeural", "Ανδρική ελληνική φωνή"
+    english = language == "Αγγλικά"
+    male = voice_label == "Ανδρική φωνή"
 
+    if english and male:
+        return "en-US-GuyNeural", "Ανδρική αγγλική φωνή"
+    if english:
+        return "en-US-JennyNeural", "Γυναικεία αγγλική φωνή"
+    if male:
+        return "el-GR-NestorasNeural", "Ανδρική ελληνική φωνή"
     return "el-GR-AthinaNeural", "Γυναικεία ελληνική φωνή"
 
 
-def create_greek_narration(
+def create_narration(
     story: str,
     voice_label: str,
+    language: str,
 ) -> tuple[str | None, str, str | None]:
-    # Δημιουργεί αφήγηση και χρονισμένους υπότιτλους από το edge-tts.
-    voice_name, friendly_name = resolve_greek_voice(voice_label)
+    # Δημιουργεί αφήγηση και συγχρονισμένους υπότιτλους.
+    voice_name, friendly_name = resolve_voice(voice_label, language)
     if voice_name is None:
         return None, friendly_name, None
 
     edge_tts = shutil.which("edge-tts")
     if not edge_tts:
-        raise RuntimeError("Το edge-tts δεν βρέθηκε. Γράψε: pip install edge-tts")
+        raise RuntimeError(
+            "Το edge-tts δεν βρέθηκε. Γράψε: pip install edge-tts"
+        )
 
-    audio_path = OUTPUT_DIR / "elliniki-afhghsh.mp3"
-    subtitle_path = OUTPUT_DIR / "elliniki-afhghsh.srt"
+    audio_path = OUTPUT_DIR / "afhghsh.mp3"
+    subtitle_path = OUTPUT_DIR / "afhghsh.srt"
     audio_path.unlink(missing_ok=True)
     subtitle_path.unlink(missing_ok=True)
 
@@ -601,10 +613,10 @@ def create_greek_narration(
         "--write-subtitles",
         str(subtitle_path),
     ]
-    run_process(command, title="ελληνικής αφήγησης", timeout=600)
+    run_process(command, title="αφήγησης", timeout=600)
 
     if not audio_path.exists() or audio_path.stat().st_size == 0:
-        raise RuntimeError("Η ελληνική αφήγηση δεν δημιουργήθηκε σωστά.")
+        raise RuntimeError("Η αφήγηση δεν δημιουργήθηκε σωστά.")
 
     subtitle_name = None
     if subtitle_path.exists() and subtitle_path.stat().st_size > 0:
@@ -756,7 +768,7 @@ def prepare_compact_subtitles(
         )
 
     output_path = (
-        OUTPUT_DIR / "elliniki-afhghsh-mikres-fraseis.srt"
+        OUTPUT_DIR / "afhghsh-mikres-fraseis.srt"
     )
     output_path.write_text(
         "\n\n".join(output_blocks) + "\n",
@@ -871,6 +883,94 @@ def burn_synced_subtitles(
     return output_path.name
 
 
+def create_text_background_video(
+    scenes: list[Scene],
+    video_format: str,
+    style: str,
+) -> str:
+    """Δημιουργεί φωτεινό κινούμενο φόντο χωρίς φωτογραφίες."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Το φφμεγκ δεν βρέθηκε στο Τέρμουξ.")
+
+    width, height = video_dimensions(video_format)
+    total_seconds = max(
+        1,
+        sum(scene.duration_seconds for scene in scenes),
+    )
+
+    background_color = {
+        "Ρεαλιστικό": "0x245b82",
+        "Κινηματογραφικό": "0x176b70",
+        "Παραμύθι": "0x6a3d9a",
+        "Τρόμου": "0x7a2638",
+    }.get(style, "0x245b82")
+
+    output_path = OUTPUT_DIR / "vinteo-mono-apo-keimeno.mp4"
+    output_path.unlink(missing_ok=True)
+
+    source = (
+        f"color=c={background_color}:"
+        f"s={width}x{height}:r=25:d={total_seconds}"
+    )
+
+    video_filter = (
+        "noise=alls=20:allf=t+u,"
+        "hue=h='18*t':s=1.35,"
+        "eq=contrast=1.18:brightness=0.10:saturation=1.35,"
+        "drawgrid=w=iw/8:h=ih/12:t=2:c=white@0.08,"
+        "format=yuv420p"
+    )
+
+    common = [
+        ffmpeg,
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        source,
+        "-vf",
+        video_filter,
+        "-an",
+        "-movflags",
+        "+faststart",
+    ]
+
+    try:
+        run_ffmpeg(
+            common
+            + [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "25",
+                str(output_path),
+            ]
+        )
+    except RuntimeError:
+        run_ffmpeg(
+            common
+            + [
+                "-c:v",
+                "mpeg4",
+                "-q:v",
+                "4",
+                str(output_path),
+            ]
+        )
+
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise RuntimeError(
+            "Το φωτεινό βίντεο χωρίς φωτογραφίες δεν δημιουργήθηκε."
+        )
+
+    return output_path.name
+
+
 def combine_video_and_narration(
     video_filename: str,
     narration_filename: str,
@@ -968,9 +1068,11 @@ def dimiourgia():
     options = {
         "style": str(data.get("style", "Ρεαλιστικό")),
         "duration": str(data.get("duration", "1 λεπτό")),
-        "voice": str(data.get("voice", "Ελληνικά")),
+        "language": str(data.get("language", "Ελληνικά")),
+        "voice": str(data.get("voice", "Γυναικεία φωνή")),
         "format": str(data.get("format", "Κάθετο")),
         "subtitles": str(data.get("subtitles", "Με υπότιτλους")),
+        "video_mode": str(data.get("video_mode", "Με φωτογραφίες")),
     }
 
     scenes = create_storyboard(
@@ -985,13 +1087,28 @@ def dimiourgia():
             {"ok": False, "message": "Δεν μπόρεσαν να δημιουργηθούν σκηνές."}
         ), 400
 
-    try:
-        uploaded_photo_paths = save_uploaded_photos(uploaded_files)
-    except ValueError as error:
-        return jsonify({"ok": False, "message": str(error)}), 400
+    using_text_background = (
+        options["video_mode"] == "Χωρίς φωτογραφίες"
+    )
+
+    if using_text_background:
+        clear_directory(UPLOAD_DIR)
+        uploaded_photo_paths = []
+    else:
+        try:
+            uploaded_photo_paths = save_uploaded_photos(uploaded_files)
+        except ValueError as error:
+            return jsonify({"ok": False, "message": str(error)}), 400
 
     using_own_photos = bool(uploaded_photo_paths)
-    source_images = uploaded_photo_paths if using_own_photos else default_image_paths()
+    if using_text_background:
+        source_images = []
+    else:
+        source_images = (
+            uploaded_photo_paths
+            if using_own_photos
+            else default_image_paths()
+        )
 
     video_url = None
     video_error = None
@@ -1002,12 +1119,19 @@ def dimiourgia():
     subtitles_error = None
 
     try:
-        silent_video_filename = create_preview_video(
-            scenes,
-            options["format"],
-            source_images,
-            using_own_photos,
-        )
+        if using_text_background:
+            silent_video_filename = create_text_background_video(
+                scenes,
+                options["format"],
+                options["style"],
+            )
+        else:
+            silent_video_filename = create_preview_video(
+                scenes,
+                options["format"],
+                source_images,
+                using_own_photos,
+            )
         final_video_filename = silent_video_filename
 
         narration_filename = None
@@ -1019,9 +1143,10 @@ def dimiourgia():
                     narration_filename,
                     voice_used,
                     timed_subtitles_filename,
-                ) = create_greek_narration(
+                ) = create_narration(
                     story,
                     options["voice"],
+                    options["language"],
                 )
             except (RuntimeError, subprocess.TimeoutExpired) as error:
                 narration_error = str(error)
@@ -1080,7 +1205,9 @@ def dimiourgia():
             "subtitles_added": subtitles_added,
             "subtitles_error": subtitles_error,
             "using_own_photos": using_own_photos,
+            "using_text_background": using_text_background,
             "photo_count": len(source_images),
+            "language": options["language"],
         }
     )
 
